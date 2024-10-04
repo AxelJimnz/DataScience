@@ -1,7 +1,7 @@
 # Cargar librerías necesarias
-install.packages("GGally")
-install.packages("caret")
-install.packages("purrr")
+# install.packages("GGally")
+# install.packages("caret")
+# install.packages("purrr")
 library(dplyr)
 library(ggplot2)
 library(tidyr)
@@ -53,6 +53,9 @@ df$experience_years[is.na(df$experience_years)] <- mean(df$experience_years, na.
 # Llenar los valores faltantes en "salary" con la mediana
 df$salary[is.na(df$salary)] <- median(df$salary, na.rm = TRUE)
 
+# Llenar los valores faltantes en "age" con la mediana
+df$age[is.na(df$age)] <- median(df$age, na.rm = TRUE)
+
 # Verificar nuevamente los valores faltantes en R
 colSums(is.na(df))
 
@@ -96,13 +99,13 @@ correlation_melted <- melt(correlation_matrix)
 # Crear el mapa de calor
 ggplot(correlation_melted, aes(Var1, Var2, fill = value)) +
   geom_tile() +
-  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+  scale_fill_gradient2(low = "violet", high = "blue", mid = "white", 
                        midpoint = 0, limit = c(-1, 1), name = "Correlación") +
   theme_minimal() +
   geom_text(aes(label = round(value, 2)), color = "black") +
   labs(title = "Mapa de Calor de la Matriz de Correlación", x = "", y = "")
 
-# Gráfico de dispersión para 'experience_years' por 'age' en R
+# Gráfico de dispersión para 'experience_years' por 'age'
 ggplot(df, aes(x = age, y = experience_years)) +
   geom_point() +
   labs(title = "Gráfico de Dispersión: Años de Experiencia vs Edad", 
@@ -117,9 +120,6 @@ ggplot(emp_data, aes(x = experience_years, y = salary)) +
        x = "Años de Experiencia", 
        y = "Salario") +
   theme_minimal()
-
-# Par de gráficos
-ggpairs(emp_data)
 
 # Contar los valores en la columna 'education_level'
 table(emp_data$education_level)
@@ -151,23 +151,89 @@ ggplot(data = as.data.frame(table(emp_data$gender)), aes(x = Var1, y = Freq)) +
 # Contar los valores en la columna 'job_title' en R
 table(emp_data$job_title)
 
-# -------------------------------
-# Procesamiento de los Datos
-# -------------------------------
-# Variables dependientes e independientes en R
-x <- emp_data[, !names(emp_data) %in% c("salary")]
+# ------------------------
+# 5. Preprocesamiento de Datos
+# ------------------------
+# Definir la variable dependiente y las variables independientes
+x <- emp_data %>% select(-salary)  # Excluir la variable dependiente
 y <- emp_data$salary
 
-set.seed(42)  # Fijar la semilla para reproducibilidad
-train_index <- createDataPartition(y, p = 0.8, list = FALSE)  # Crear índices para el conjunto de entrenamiento
-x_train <- x[train_index, ]
-y_train <- y[train_index]
-x_test <- x[-train_index, ]
-y_test <- y[-train_index]
+# Dividir los datos en conjuntos de entrenamiento y prueba
+set.seed(42)  #
+train_index <- sample(seq_len(nrow(emp_data)), size = 0.8 * nrow(emp_data))  # Índices para el conjunto de entrenamiento
+x_train <- x[train_index, ]  # Datos de entrenamiento
+y_train <- y[train_index]  # Variable dependiente del conjunto de entrenamiento
+x_test <- x[-train_index, ]  # Datos de prueba
+y_test <- y[-train_index]  # Variable dependiente del conjunto de prueba
+
+# Preprocesadores para datos numéricos
+num_preprocessor <- preProcess(x_train %>% select(age, experience_years), method = c("center", "scale"))
+
+# Preprocesador para datos categóricos
+cat_preprocessor <- dummyVars(~ gender + education_level + job_title, data = x_train)
+
+# Preprocesar datos
+preprocess_data <- function(data) {
+  num_transformed <- predict(num_preprocessor, data)  # Transformación numérica
+  cat_transformed <- predict(cat_preprocessor, data)  # Transformación categórica
+  
+  # Combinar los resultados
+  transformed_data <- cbind(num_transformed, cat_transformed)
+  
+  # Asegurarse de que los nombres de las columnas sean únicos
+  colnames(transformed_data) <- make.unique(colnames(transformed_data))
+  
+  return(transformed_data)
+}
 
 
+# Crear la pipeline para regresión lineal
+linear_regression_pipeline <- function(train_data, y_train) {
+  train_transformed <- preprocess_data(data.frame(train_data, y_train))  # Preprocesar solo las variables independientes
+  model <- lm(y_train ~ ., data = as.data.frame(train_transformed))  # Ajustar el modelo
+  return(model)
+}
+
+# Validación cruzada para regresión lineal
+set.seed(42)  # Para reproducibilidad
+control <- trainControl(method = "cv", number = 5)
+
+# Crear datos preprocesados para el entrenamiento
+train_transformed <- preprocess_data(data.frame(x_train, y_train))
+
+# Ajustar el modelo de regresión lineal usando validación cruzada
+linear_model <- train(y_train ~ ., 
+                      data = as.data.frame(train_transformed), 
+                      method = "lm", 
+                      trControl = control)
+
+# Obtener los puntajes de RMSE
+linear_scores <- linear_model$results$RMSE
+cat("Linear Regression cross-validation scores are:", linear_scores, "\n")
+
+# Ajustar el modelo de regresión lineal a los datos de entrenamiento
+selected_model <- linear_regression_pipeline(x_train, y_train)# Definir la variable dependiente y las variables independientes
+x <- emp_data %>% select(-salary)  # Excluir la variable dependiente
+y <- emp_data$salary
 
 
+# ----------------------
+# 6. Evaluación del Modelo
+# ----------------------
+# Predecir salarios en los datos de entrenamiento y calcular precisión
+y_train_predict <- predict(selected_model, newdata = preprocess_data(data.frame(x_train)))  # Predicciones en datos de entrenamiento
+mse_train <- mean((y_train - y_train_predict) ^ 2)  # Calcular MSE
+r2_train <- summary(selected_model)$r.squared  # Calcular R²
+rmse_train <- sqrt(mse_train)
 
+cat(sprintf("Root Mean Square of training data: %.2f\n", rmse_train))
+cat(sprintf("R square of training data: %.4f\n", r2_train))
 
+# Predecir salarios en los datos de prueba y calcular precisión
+y_test_predict <- predict(selected_model, newdata = preprocess_data(data.frame(x_test)))  # Predicciones en datos de prueba
+mse_test <- mean((y_test - y_test_predict) ^ 2)  # Calcular MSE
+r2_test <- 1 - (sum((y_test - y_test_predict)^2) / sum((y_test - mean(y_test))^2))  # Calcular R² para datos de prueba
+rmse_test <- sqrt(mse_test)
 
+cat(sprintf("Root Mean Square of testing data: %.2f\n", rmse_test))
+cat(sprintf("R square of testing data: %.4f\n", r2_test))
