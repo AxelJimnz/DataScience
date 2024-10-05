@@ -1,7 +1,9 @@
 # Cargar bibliotecas
+install.packages(geom)
 library(tidyverse)
 library(plotly)
 library(caret)
+library(geom_boxplot)
 
 # Leer el archivo CSV
 df <- read.csv("D:/ICO - AXEL JIMENEZ PEREZ/8.OCTAVO SEMESTRE/CIENCIA DE DATOS/FIRST EXAM/Salary_Data.csv")
@@ -131,10 +133,50 @@ X_train$salary <- NULL
 X_test$salary <- NULL
 
 # Ajustar el modelo de regresión múltiple
-lm_model <- lm(salary ~ ., data = X_train)
+lm_model <- lm(y_train ~ ., data = X_train)
+# Resumen del modelo
+summary(lm_model)
 
+# Predicciones en el conjunto de prueba
+predictions_lm <- predict(lm_model, newdata = X_test)
+# Calcular métricas de error
+mse_lm <- mean((y_test - predictions_lm)^2)
+mae_lm <- mean(abs(y_test - predictions_lm))
+rmse_lm <- sqrt(mse_lm)
+r_squared_lm <- summary(lm(lm_model))$r.squared
 
+cat(sprintf("Mean Squared Error (LM): %.2f\n", mse_lm))
+cat(sprintf("Mean Absolute Error (LM): %.2f\n", mae_lm))
+cat(sprintf("Root Mean Squared Error (LM): %.2f\n", rmse_lm))
+cat(sprintf("R-squared (LM): %.2f\n", r_squared_lm))
 
+# Comparar salarios reales y predichos
+predicted_df_lm <- data.frame(
+  Actual_Salary = y_test,
+  Predicted_Salary = predictions_lm
+)
 
+# Gráfico de salarios reales vs. predichos para el modelo de regresión múltiple
+fig_lm <- plot_ly(data = predicted_df_lm, x = ~Actual_Salary, y = ~Predicted_Salary, type = 'scatter', mode = 'markers', text = ~Actual_Salary - Predicted_Salary)
+fig_lm <- fig_lm %>% layout(title = "Salario Predicho vs. Salario Real (Regresión Múltiple)")
+ggplotly(fig_lm)
 
+# Gráfico de salarios reales vs. predichos para el modelo de regresión múltiple
+predictions <- predict(lm_model, newdata = X_test)
 
+# Combina los datos reales y predichos
+comparison_df <- data.frame(
+  Actual_Salary = y_test,
+  Predicted_Salary = predictions
+)
+
+fig2 <- ggplot(comparison_df, aes(x = Actual_Salary, y = Predicted_Salary)) +
+  geom_point(aes(color = abs(Actual_Salary - Predicted_Salary)), size = 2, alpha = 0.7) +
+  geom_smooth(method = "lm", color = "blue", se = FALSE) +
+  labs(title = "Salarios Reales vs. Predichos",
+       x = "Salario Real",
+       y = "Salario Predicho") +
+  scale_color_gradient(low = "green", high = "red") +
+  theme_minimal()
+
+print(fig2)
