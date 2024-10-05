@@ -102,18 +102,36 @@ dummies <- model.matrix(~ `job_title` - 1, data = df)
 df <- cbind(df, dummies)
 df$`job_title` <- NULL
 
-#División de datos y modelado
+
+# Calcular la Matriz de Correlacion
+correlation_matrix <- cor(df %>% select_if(is.numeric))
+print(correlation_matrix)
+
+# Identificar variables correlacionadas con el Salario
+correlation_with_salary <- correlation_matrix["salary",]
+str(correlation_with_salary)
+
+# Filtrar variables con una correlación absoluta mayor a 0.3 (puedes ajustar este umbral según sea necesario)
+selected_variables <- names(correlation_with_salary[abs(correlation_with_salary) > 0.3])
+selected_variables
+
+# Crear un nuevo dataframe solo con las variables seleccionadas
+df_selected <- df %>% select(all_of(selected_variables))
+
 # Dividir datos en conjunto de entrenamiento y prueba
 set.seed(90)
-trainIndex <- createDataPartition(df$salary, p = .8, 
+trainIndex <- createDataPartition(df_selected$salary, p = .8, 
                                   list = FALSE, 
                                   times = 1)
-X_train <- df[trainIndex, ]
-X_test <- df[-trainIndex, ]
+X_train <- df_selected[trainIndex, ]
+X_test <- df_selected[-trainIndex, ]
 y_train <- X_train$salary
 y_test <- X_test$salary
 X_train$salary <- NULL
 X_test$salary <- NULL
+
+# Ajustar el modelo de regresión múltiple
+lm_model <- lm(salary ~ ., data = X_train)
 
 
 
